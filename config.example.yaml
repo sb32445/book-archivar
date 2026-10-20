@@ -1,0 +1,14 @@
+# Copy to config.yaml (or pass --config / set BOOK_ARCHIVAR_CONFIG).
+# Every key is optional; these are the defaults.
+
+# Holds library/ (book.md, chapters.json, metadata.json per book) and chroma/.
+data_dir: ~/.local/share/book-archivar
+
+# Any OpenAI-compatible /v1/embeddings endpoint. Defaults target Ollama:
+#   ollama pull bge-m3
+embedding_base_url: http://localhost:11434/v1
+embedding_model: bge-m3
+embedding_api_key: not-needed
+
+chunk_size: 1500      # characters
+chunk_overlap: 200

@@ -1,0 +1,30 @@
+[project]
+name = "book-archivar"
+version = "0.1.0"
+description = "Give an MCP-capable AI agent chapter-level access to your own EPUB library, fully local."
+readme = "README.md"
+license = "MIT OR Apache-2.0"
+license-files = ["LICENSE-MIT", "LICENSE-APACHE"]
+requires-python = ">=3.12"
+dependencies = [
+    "mcp>=2.2.0,<3",
+    "chromadb>=1.5,<2",
+    "EbookLib>=0.18,<0.19",
+    "PyYAML>=6.0,<7",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+book-archivar = "book_archivar.cli:main"
+
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
