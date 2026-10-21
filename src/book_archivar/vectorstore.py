@@ -39,6 +39,9 @@ class KeywordIndex:
 
     def query(self, text: str, top_k: int = 5, slug: str | None = None) -> list[dict]:
         tokens = _TOKEN.findall(text)
+        # Short words ("wer", "ist", "und") only add noise to a natural-language
+        # question; keep them only if nothing longer is left.
+        tokens = [t for t in tokens if len(t) > 3] or tokens
         if not tokens:
             return []
         match = " OR ".join(f'"{t}"' for t in tokens)

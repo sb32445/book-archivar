@@ -184,3 +184,11 @@ def test_cli_import_reports_unsupported_and_bad_files(tmp_path, embeddings, monk
     bad.write_text("hi")
     assert cli.main(["--config", str(cfg), "import", str(bad)]) == 1
     assert "unsupported" in capsys.readouterr().err
+
+
+def test_keyword_search_ignores_short_filler_words(tmp_path, config, embeddings, full_store):
+    _import_two(tmp_path, config, embeddings, full_store)
+    # "item" appears in alpha only; "the", "of", "a" appear everywhere but must not match on their own
+    hits = full_store.keyword_query("the item of a", top_k=10)
+    assert hits and all("item" in h["text"] for h in hits)
+    assert full_store.keyword_query("of a", top_k=3) is not None  # all-short query still works
