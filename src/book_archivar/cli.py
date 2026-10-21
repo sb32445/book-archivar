@@ -3,8 +3,10 @@ from __future__ import annotations
 import argparse
 import logging
 import sys
+import threading
 from pathlib import Path
 
+from book_archivar.addons.inbox import InboxWatcher
 from book_archivar.config import Config, load_config
 from book_archivar.embeddings import EmbeddingsClient
 from book_archivar.epub_convert import ConversionError
@@ -43,8 +45,32 @@ def cmd_import(config: Config, paths: list[Path]) -> int:
     return 1 if failures else 0
 
 
-def cmd_serve(config: Config, transport: str, host: str, port: int) -> int:
+def _watcher(config: Config, inbox: Path, embeddings_client, vector_store) -> InboxWatcher:
+    return InboxWatcher(
+        inbox, lambda p: import_epub(p, config, embeddings_client, vector_store)
+    )
+
+
+def cmd_watch(config: Config, inbox: Path, interval: float) -> int:
     embeddings_client, vector_store = _clients(config)
+    watcher = _watcher(config, inbox, embeddings_client, vector_store)
+    try:
+        watcher.run_forever(interval)
+    except KeyboardInterrupt:
+        pass
+    return 0
+
+
+def cmd_serve(
+    config: Config, transport: str, host: str, port: int,
+    inbox: Path | None = None, interval: float = 60,
+) -> int:
+    embeddings_client, vector_store = _clients(config)
+    if inbox is not None:
+        watcher = _watcher(config, inbox, embeddings_client, vector_store)
+        threading.Thread(
+            target=watcher.run_forever, args=(interval,), daemon=True, name="inbox"
+        ).start()
     server = build_server(config, embeddings_client, vector_store)
     if transport == "stdio":
         server.run("stdio")
@@ -61,7 +87,13 @@ def main(argv: list[str] | None = None) -> int:
     p_import = sub.add_parser("import", help="import EPUB files (or folders of them)")
     p_import.add_argument("paths", nargs="+", type=Path)
 
+    p_watch = sub.add_parser("watch", help="import EPUBs dropped into a folder (add-on)")
+    p_watch.add_argument("inbox", type=Path)
+    p_watch.add_argument("--interval", type=float, default=60, help="poll seconds")
+
     p_serve = sub.add_parser("serve", help="run the MCP server")
+    p_serve.add_argument("--inbox", type=Path, help="also watch this folder (add-on)")
+    p_serve.add_argument("--interval", type=float, default=60, help="inbox poll seconds")
     p_serve.add_argument("--transport", choices=["stdio", "streamable-http"], default="stdio")
     p_serve.add_argument("--host", default="127.0.0.1")
     p_serve.add_argument("--port", type=int, default=8000)
@@ -72,7 +104,11 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "import":
         return cmd_import(config, args.paths)
-    return cmd_serve(config, args.transport, args.host, args.port)
+    if args.command == "watch":
+        return cmd_watch(config, args.inbox, args.interval)
+    return cmd_serve(
+        config, args.transport, args.host, args.port, args.inbox, args.interval
+    )
 
 
 if __name__ == "__main__":

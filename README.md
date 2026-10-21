@@ -40,6 +40,15 @@ Claude Desktop (`claude_desktop_config.json`) / Claude Code (`claude mcp add`):
 
 For a network service use `serve --transport streamable-http --host 127.0.0.1 --port 8000`.
 
+## Add-on: inbox watcher
+
+Drop EPUBs into a folder and they are imported automatically:
+
+    ./venv/bin/book-archivar watch ~/book-inbox            # watcher only
+    ./venv/bin/book-archivar serve --inbox ~/book-inbox    # MCP server + watcher
+
+Files are never deleted; they move to `processed/`, `duplicates/` (already in the library) or `failed/` (the file itself is broken). If the embedding endpoint is down, books simply wait in the inbox. `deploy/book-archivar.service` is a systemd user-service example.
+
 ## Configuration
 
 Everything has a default; see `config.example.yaml`. Pass `--config FILE`, set `BOOK_ARCHIVAR_CONFIG`, or place a `config.yaml` in the working directory. Data lives in `~/.local/share/book-archivar` (`library/<slug>/{book.md,chapters.json,metadata.json}` plus `chroma/`).

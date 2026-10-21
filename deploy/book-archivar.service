@@ -1,0 +1,16 @@
+# systemd user service: MCP server (HTTP) plus inbox watcher.
+# Copy to ~/.config/systemd/user/, adjust paths, then:
+#   systemctl --user daemon-reload && systemctl --user enable --now book-archivar
+[Unit]
+Description=book-archivar (MCP server + inbox watcher)
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=%h/book-archivar/venv/bin/book-archivar --config %h/book-archivar/config.yaml \
+    serve --transport streamable-http --inbox %h/book-archivar/inbox
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
