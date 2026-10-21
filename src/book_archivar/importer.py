@@ -6,6 +6,7 @@ import logging
 from datetime import datetime, timezone
 from pathlib import Path
 
+from book_archivar.addons.duplicates import file_for_review, find_fuzzy_duplicate
 from book_archivar.chapters import write_chapters
 from book_archivar.chunking import chunk_book
 from book_archivar.config import Config
@@ -21,7 +22,7 @@ EMBED_BATCH_SIZE = 20
 
 @dataclasses.dataclass(frozen=True)
 class ImportOutcome:
-    status: str  # "imported" | "duplicate"
+    status: str  # "imported" | "duplicate" | "review"
     slug: str
 
 
@@ -38,23 +39,39 @@ def _unique_slug(base: str, content_hash: str, taken: set[str]) -> str:
 
 
 def import_epub(
-    epub_path: Path, config: Config, embeddings_client, vector_store: VectorStore
+    epub_path: Path,
+    config: Config,
+    embeddings_client,
+    vector_store: VectorStore,
+    review_dir: Path | None = None,
+    force: bool = False,
 ) -> ImportOutcome:
     """Import one EPUB into <data_dir>/library/<slug>/ and index it in Chroma.
 
     The same file (by SHA-256) is never imported twice. Embedding happens before
     anything is written, so an unreachable embedding endpoint leaves no
     half-imported book behind. The source file is left untouched.
+
+    With `review_dir` (duplicates add-on), a book whose author+title match an
+    existing one but whose bytes differ is copied there for a human decision
+    instead of being imported. `force=True` skips both duplicate checks.
     """
     index_path = config.library_dir / "index.json"
     content_hash = sha256_file(epub_path)
     entries = read_index(index_path)
-    for entry in entries:
-        if entry.content_hash == content_hash:
-            return ImportOutcome("duplicate", entry.slug)
+    if not force:
+        for entry in entries:
+            if entry.content_hash == content_hash:
+                return ImportOutcome("duplicate", entry.slug)
 
     book = convert_epub(epub_path)
     author = canonical_author(book.author)
+    if review_dir is not None and not force:
+        matched = find_fuzzy_duplicate(author, book.title, entries)
+        if matched is not None:
+            file_for_review(epub_path, review_dir, content_hash, matched)
+            logger.info("%s looks like %s: filed for review", epub_path.name, matched.slug)
+            return ImportOutcome("review", matched.slug)
     slug = _unique_slug(slugify(author, book.title), content_hash, {e.slug for e in entries})
 
     body = book.markdown.encode("utf-8")

@@ -1,7 +1,8 @@
 """Add-on: watch a folder and import every EPUB dropped into it.
 
 Files are never deleted. After handling, each file moves into a subfolder of the
-inbox: processed/ (imported), duplicates/ (already in the library) or failed/
+inbox: processed/ (imported), duplicates/ (already in the library), review/ (looks
+like an existing book, see the duplicates add-on) or failed/
 (the file itself is broken: still failing after MAX_ATTEMPTS polls).
 Network/OS errors such as an unreachable embedding endpoint never count: the
 file stays in the inbox until the problem is fixed.
@@ -19,7 +20,7 @@ from book_archivar.importer import ImportOutcome
 logger = logging.getLogger(__name__)
 
 MAX_ATTEMPTS = 3
-_DESTINATIONS = {"imported": "processed", "duplicate": "duplicates"}
+_DESTINATIONS = {"imported": "processed", "duplicate": "duplicates", "review": "review"}
 
 
 class InboxWatcher:

@@ -6,6 +6,7 @@ import sys
 import threading
 from pathlib import Path
 
+from book_archivar.addons import review
 from book_archivar.addons.inbox import InboxWatcher
 from book_archivar.config import Config, load_config
 from book_archivar.embeddings import EmbeddingsClient
@@ -24,6 +25,20 @@ def _clients(config: Config) -> tuple[EmbeddingsClient, VectorStore]:
     )
 
 
+def review_dir(config: Config) -> Path | None:
+    """Where the duplicates add-on parks suspects; None while the add-on is off."""
+    options = config.addon_options("duplicates")
+    if options is None:
+        return None
+    return Path(options.get("review_dir", config.data_dir / "review")).expanduser()
+
+
+def _import_fn(config: Config, embeddings_client, vector_store):
+    return lambda p: import_epub(
+        p, config, embeddings_client, vector_store, review_dir=review_dir(config)
+    )
+
+
 def _collect_epubs(paths: list[Path]) -> list[Path]:
     found: list[Path] = []
     for path in paths:
@@ -36,7 +51,7 @@ def cmd_import(config: Config, paths: list[Path]) -> int:
     failures = 0
     for epub in _collect_epubs(paths):
         try:
-            outcome = import_epub(epub, config, embeddings_client, vector_store)
+            outcome = _import_fn(config, embeddings_client, vector_store)(epub)
         except (ConversionError, OSError) as exc:
             print(f"FAILED   {epub}: {exc}", file=sys.stderr)
             failures += 1
@@ -46,9 +61,7 @@ def cmd_import(config: Config, paths: list[Path]) -> int:
 
 
 def _watcher(config: Config, inbox: Path, embeddings_client, vector_store) -> InboxWatcher:
-    return InboxWatcher(
-        inbox, lambda p: import_epub(p, config, embeddings_client, vector_store)
-    )
+    return InboxWatcher(inbox, _import_fn(config, embeddings_client, vector_store))
 
 
 def cmd_watch(config: Config, inbox: Path, interval: float) -> int:
@@ -58,6 +71,24 @@ def cmd_watch(config: Config, inbox: Path, interval: float) -> int:
         watcher.run_forever(interval)
     except KeyboardInterrupt:
         pass
+    return 0
+
+
+def cmd_review(config: Config, action: str, entry: str | None) -> int:
+    directory = review_dir(config)
+    if directory is None:
+        print("the duplicates add-on is not enabled (addons.duplicates.enabled)", file=sys.stderr)
+        return 1
+    if action == "list":
+        for item in review.list_entries(directory):
+            print(f"{item['entry']}  (matches {item['matched_slug']})")
+        return 0
+    if entry is None:
+        print(f"{action} needs an entry name (see `review list`)", file=sys.stderr)
+        return 2
+    embeddings_client, vector_store = _clients(config)
+    review.resolve(directory / entry, action, config, embeddings_client, vector_store)
+    print(f"{action}: {entry}")
     return 0
 
 
@@ -104,6 +135,10 @@ def main(argv: list[str] | None = None) -> int:
     p_watch.add_argument("inbox", type=Path, nargs="?", help="default: addons.inbox.path")
     p_watch.add_argument("--interval", type=float, help="poll seconds (default 60)")
 
+    p_review = sub.add_parser("review", help="resolve suspected duplicates (add-on)")
+    p_review.add_argument("action", choices=["list", *review.ACTIONS])
+    p_review.add_argument("entry", nargs="?", help="folder name from `review list`")
+
     p_serve = sub.add_parser("serve", help="run the MCP server")
     p_serve.add_argument("--inbox", type=Path, help="also watch this folder (add-on)")
     p_serve.add_argument("--interval", type=float, help="inbox poll seconds (default 60)")
@@ -117,6 +152,8 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "import":
         return cmd_import(config, args.paths)
+    if args.command == "review":
+        return cmd_review(config, args.action, args.entry)
     inbox, interval = _inbox_settings(config, args)
     if args.command == "watch":
         if inbox is None:

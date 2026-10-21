@@ -51,6 +51,17 @@ Or switch it on in `config.yaml` (`addons.inbox.enabled: true`, `path`, `interva
 
 Files are never deleted; they move to `processed/`, `duplicates/` (already in the library) or `failed/` (the file itself is broken). If the embedding endpoint is down, books simply wait in the inbox. `deploy/book-archivar.service` is a systemd user-service example.
 
+## Add-on: duplicate review
+
+The core only skips byte-identical files. With `addons.duplicates.enabled: true`, a book whose author and title match an existing one (ignoring case, name order and edition suffixes) but whose file differs is copied to `review/` instead of being imported. Then decide:
+
+    book-archivar review list
+    book-archivar review keep-both <entry>   # import it as an additional book
+    book-archivar review replace <entry>     # import it, then remove the old copy
+    book-archivar review discard <entry>
+
+`replace` imports first and removes the old book only afterwards, so a failed import never costs you the original. Stop `serve` while resolving (the index and Chroma are not meant for two writers). With the inbox add-on, such files land in the inbox's `review/` folder.
+
 ## Configuration
 
 Everything has a default; see `config.example.yaml`. Pass `--config FILE`, set `BOOK_ARCHIVAR_CONFIG`, or place a `config.yaml` in the working directory. Data lives in `~/.local/share/book-archivar` (`library/<slug>/{book.md,chapters.json,metadata.json}` plus `chroma/`).

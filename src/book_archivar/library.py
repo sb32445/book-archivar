@@ -33,3 +33,11 @@ def add_entry(index_path: Path, entry: BookEntry) -> None:
     entries = [e for e in read_index(index_path) if e.slug != entry.slug]
     entries.append(entry)
     write_index(index_path, entries)
+
+
+def remove_entry(index_path: Path, slug: str) -> None:
+    """Drop the entry for `slug` from the index. No-op if it is not present."""
+    entries = read_index(index_path)
+    remaining = [e for e in entries if e.slug != slug]
+    if len(remaining) != len(entries):
+        write_index(index_path, remaining)
