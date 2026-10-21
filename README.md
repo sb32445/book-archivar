@@ -62,6 +62,10 @@ The core only skips byte-identical files. With `addons.duplicates.enabled: true`
 
 `replace` imports first and removes the old book only afterwards, so a failed import never costs you the original. Stop `serve` while resolving (the index and Chroma are not meant for two writers). With the inbox add-on, such files land in the inbox's `review/` folder.
 
+## Add-on: JSON log file
+
+`addons.logging.enabled: true` writes a rotating JSON-lines log (`book-archivar.log`, default in `<data_dir>/logs`, 5 MB x 5) in addition to the normal stderr output: imports, review decisions, inbox activity and every MCP tool call. Only metadata is logged (tool, book, counts), never queries or book text.
+
 ## Configuration
 
 Everything has a default; see `config.example.yaml`. Pass `--config FILE`, set `BOOK_ARCHIVAR_CONFIG`, or place a `config.yaml` in the working directory. Data lives in `~/.local/share/book-archivar` (`library/<slug>/{book.md,chapters.json,metadata.json}` plus `chroma/`).

@@ -7,6 +7,7 @@ import threading
 from pathlib import Path
 
 from book_archivar.addons import review
+from book_archivar.addons.jsonlog import configure_logging
 from book_archivar.addons.inbox import InboxWatcher
 from book_archivar.config import Config, load_config
 from book_archivar.embeddings import EmbeddingsClient
@@ -149,6 +150,12 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, stream=sys.stderr)
     config = load_config(args.config)
+    log_options = config.addon_options("logging")
+    if log_options is not None:
+        configure_logging(
+            Path(log_options.get("dir", config.data_dir / "logs")).expanduser(),
+            getattr(logging, str(log_options.get("level", "INFO")).upper(), logging.INFO),
+        )
 
     if args.command == "import":
         return cmd_import(config, args.paths)

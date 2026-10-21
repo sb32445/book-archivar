@@ -22,3 +22,7 @@ addons:
   duplicates:                # park "same book, other file" in review/ instead of importing it
     enabled: false           # resolve with: book-archivar review list|keep-both|replace|discard
     # review_dir: ~/.local/share/book-archivar/review
+  logging:                   # JSON-lines log file (rotating) next to the stderr log
+    enabled: false
+    # dir: ~/.local/share/book-archivar/logs
+    level: INFO

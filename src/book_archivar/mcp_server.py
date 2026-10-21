@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import logging
+
 from mcp.server.mcpserver import MCPServer
 
 from book_archivar.chapters import read_chapters
 from book_archivar.config import Config
 from book_archivar.library import read_index
 from book_archivar.vectorstore import VectorStore
+
+logger = logging.getLogger(__name__)
 
 
 def list_books(config: Config) -> list[dict]:
@@ -51,18 +55,27 @@ def build_server(config: Config, embeddings_client, vector_store: VectorStore) -
     @server.tool(name="list_books")
     def _list_books() -> list[dict]:
         """List all archived books (slug, title, author, language)."""
-        return list_books(config)
+        result = list_books(config)
+        logger.info("tool=list_books books=%d", len(result))
+        return result
 
     @server.tool(name="search_books")
     def _search_books(query: str, book_slug: str | None = None, top_k: int = 5) -> list[dict]:
         """Semantic search over archived books, optionally scoped to one book_slug."""
         embedding = embeddings_client.embed([query])[0]
-        return vector_store.query(embedding, top_k=top_k, slug=book_slug)
+        results = vector_store.query(embedding, top_k=top_k, slug=book_slug)
+        # metadata only: never log the query or book text
+        logger.info("tool=search_books book_slug=%s top_k=%d results=%d",
+                    book_slug, top_k, len(results))
+        return results
 
     @server.tool(name="list_chapters")
     def _list_chapters(book_slug: str) -> list[dict] | str:
         """List a book's chapters as {index, title}, for navigating with get_chapter."""
-        return list_chapters(config, book_slug)
+        result = list_chapters(config, book_slug)
+        logger.info("tool=list_chapters book_slug=%s chapters=%s", book_slug,
+                    len(result) if isinstance(result, list) else "error")
+        return result
 
     @server.tool(name="get_chapter")
     def _get_chapter(book_slug: str, chapter_title_or_index: str) -> str:
@@ -71,6 +84,9 @@ def build_server(config: Config, embeddings_client, vector_store: VectorStore) -
         chapter_title_or_index is a chapter title, or a numeric string
         ("0", "1", ...) selecting the chapter by its 0-based position.
         """
-        return get_chapter(config, book_slug, chapter_title_or_index)
+        text = get_chapter(config, book_slug, chapter_title_or_index)
+        logger.info("tool=get_chapter book_slug=%s chapter=%s bytes=%d", book_slug,
+                    chapter_title_or_index, len(text.encode("utf-8")))
+        return text
 
     return server
