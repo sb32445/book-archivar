@@ -112,3 +112,17 @@ def test_cli_review_requires_enabled_addon(tmp_path, capsys):
     assert cli.main(["--config", str(cfg), "review", "list"]) == 1
     cfg.write_text(f"data_dir: {tmp_path}/d\naddons:\n  duplicates:\n    enabled: true\n")
     assert cli.main(["--config", str(cfg), "review", "list"]) == 0
+
+
+def test_non_epub_review_entries_can_be_resolved(tmp_path, config, embeddings, store):
+    a = tmp_path / "a.md"
+    a.write_text("# Same Title\n\nfirst version")
+    b = tmp_path / "b.md"
+    b.write_text("# Same Title\n\nsecond version")
+    rd = tmp_path / "review"
+    first = import_epub(a, config, embeddings, store, review_dir=rd)
+    assert import_epub(b, config, embeddings, store, review_dir=rd).status == "review"
+    entry = next(rd.iterdir())
+    assert review.list_entries(rd)[0]["files"] == ["b.md"]
+    review.resolve(entry, "keep-both", config, embeddings, store)
+    assert len(read_index(config.library_dir / "index.json")) == 2 and not entry.exists()

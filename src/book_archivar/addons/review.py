@@ -16,13 +16,18 @@ logger = logging.getLogger(__name__)
 ACTIONS = ("keep-both", "replace", "discard")
 
 
+def _books_in(entry_dir: Path) -> list[Path]:
+    """The parked book file(s) of a review entry: everything except note.json."""
+    return sorted(f for f in Path(entry_dir).iterdir() if f.is_file() and f.name != "note.json")
+
+
 def list_entries(review_dir: Path) -> list[dict]:
     out = []
     for folder in sorted(p for p in Path(review_dir).glob("*") if p.is_dir()):
         note_path = folder / "note.json"
         note = json.loads(note_path.read_text()) if note_path.exists() else {}
         out.append({"entry": folder.name, "matched_slug": note.get("matched_slug"),
-                    "files": [f.name for f in folder.glob("*.epub")]})
+                    "files": [f.name for f in _books_in(folder)]})
     return out
 
 
@@ -48,9 +53,9 @@ def resolve(
         shutil.rmtree(entry_dir)
         return
 
-    epubs = sorted(entry_dir.glob("*.epub"))
+    epubs = _books_in(entry_dir)
     if len(epubs) != 1:
-        raise ValueError(f"expected exactly one .epub in {entry_dir}, found {len(epubs)}")
+        raise ValueError(f"expected exactly one book file in {entry_dir}, found {len(epubs)}")
 
     matched_slug = None
     if action == "replace":
