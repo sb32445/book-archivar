@@ -79,6 +79,19 @@ def cmd_serve(
     return 0
 
 
+def _inbox_settings(config: Config, args) -> tuple[Path | None, float]:
+    """Inbox folder and poll interval: command line first, then the config's
+    `addons.inbox` section (which only applies to `serve` when enabled)."""
+    options = config.addon_options("inbox") if args.command == "serve" else (
+        config.addons.get("inbox") or {}
+    )
+    inbox = args.inbox
+    if inbox is None and options and options.get("path"):
+        inbox = Path(options["path"]).expanduser()
+    interval = args.interval or float((options or {}).get("interval", 60))
+    return inbox, interval
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="book-archivar")
     parser.add_argument("--config", type=Path, help="path to config.yaml")
@@ -88,12 +101,12 @@ def main(argv: list[str] | None = None) -> int:
     p_import.add_argument("paths", nargs="+", type=Path)
 
     p_watch = sub.add_parser("watch", help="import EPUBs dropped into a folder (add-on)")
-    p_watch.add_argument("inbox", type=Path)
-    p_watch.add_argument("--interval", type=float, default=60, help="poll seconds")
+    p_watch.add_argument("inbox", type=Path, nargs="?", help="default: addons.inbox.path")
+    p_watch.add_argument("--interval", type=float, help="poll seconds (default 60)")
 
     p_serve = sub.add_parser("serve", help="run the MCP server")
     p_serve.add_argument("--inbox", type=Path, help="also watch this folder (add-on)")
-    p_serve.add_argument("--interval", type=float, default=60, help="inbox poll seconds")
+    p_serve.add_argument("--interval", type=float, help="inbox poll seconds (default 60)")
     p_serve.add_argument("--transport", choices=["stdio", "streamable-http"], default="stdio")
     p_serve.add_argument("--host", default="127.0.0.1")
     p_serve.add_argument("--port", type=int, default=8000)
@@ -104,11 +117,12 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "import":
         return cmd_import(config, args.paths)
+    inbox, interval = _inbox_settings(config, args)
     if args.command == "watch":
-        return cmd_watch(config, args.inbox, args.interval)
-    return cmd_serve(
-        config, args.transport, args.host, args.port, args.inbox, args.interval
-    )
+        if inbox is None:
+            parser.error("watch needs a folder argument or addons.inbox.path in the config")
+        return cmd_watch(config, inbox, interval)
+    return cmd_serve(config, args.transport, args.host, args.port, inbox, interval)
 
 
 if __name__ == "__main__":

@@ -12,3 +12,10 @@ embedding_api_key: not-needed
 
 chunk_size: 1500      # characters
 chunk_overlap: 200
+
+# Add-ons are off unless enabled here.
+addons:
+  inbox:                     # import EPUBs dropped into a folder (`serve` / `watch`)
+    enabled: false
+    path: ~/book-inbox
+    interval: 60             # poll seconds

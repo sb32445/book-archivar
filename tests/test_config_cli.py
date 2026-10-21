@@ -29,3 +29,31 @@ def test_cli_import_folder(tmp_path, alice_epub, monkeypatch, embeddings, capsys
     assert cli.main(["--config", str(cfg), "import", str(alice_epub.parent)]) == 0
     assert "IMPORTED" in capsys.readouterr().out
     assert len(read_index(tmp_path / "data" / "library" / "index.json")) == 1
+
+
+def test_addons_are_off_unless_enabled(tmp_path):
+    f = tmp_path / "c.yaml"
+    f.write_text("addons:\n  inbox:\n    path: /x\n  other:\n    enabled: true\n")
+    cfg = load_config(f)
+    assert cfg.addon_options("inbox") is None
+    assert cfg.addon_options("other") == {"enabled": True}
+    assert cfg.addon_options("missing") is None
+    assert load_config(None).addons == {}
+
+
+def test_inbox_settings_come_from_config_only_when_enabled(tmp_path):
+    from argparse import Namespace
+
+    def settings(yaml_text, **args):
+        f = tmp_path / "c.yaml"
+        f.write_text(yaml_text)
+        ns = Namespace(command="serve", inbox=None, interval=None, **args)
+        return cli._inbox_settings(load_config(f), ns)
+
+    off = "addons:\n  inbox:\n    enabled: false\n    path: /box\n"
+    on = off.replace("false", "true") + "    interval: 5\n"
+    assert settings(off) == (None, 60)
+    assert settings(on) == (Path("/box"), 5.0)
+    # the flag wins and works without any config
+    ns = Namespace(command="serve", inbox=Path("/cli"), interval=None)
+    assert cli._inbox_settings(load_config(None), ns) == (Path("/cli"), 60)

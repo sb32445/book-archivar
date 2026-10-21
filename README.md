@@ -47,6 +47,8 @@ Drop EPUBs into a folder and they are imported automatically:
     ./venv/bin/book-archivar watch ~/book-inbox            # watcher only
     ./venv/bin/book-archivar serve --inbox ~/book-inbox    # MCP server + watcher
 
+Or switch it on in `config.yaml` (`addons.inbox.enabled: true`, `path`, `interval`), after which plain `book-archivar serve` also watches the folder. Add-ons are off by default; every add-on has its own section under `addons:` in `config.example.yaml`.
+
 Files are never deleted; they move to `processed/`, `duplicates/` (already in the library) or `failed/` (the file itself is broken). If the embedding endpoint is down, books simply wait in the inbox. `deploy/book-archivar.service` is a systemd user-service example.
 
 ## Configuration

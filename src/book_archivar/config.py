@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import yaml
@@ -17,10 +17,17 @@ class Config:
     embedding_api_key: str = "not-needed"
     chunk_size: int = 1500
     chunk_overlap: int = 200
+    addons: dict = field(default_factory=dict)  # name -> options, see addon_options()
 
     @property
     def library_dir(self) -> Path:
         return self.data_dir / "library"
+
+    def addon_options(self, name: str) -> dict | None:
+        """Options of an add-on, or None unless it is switched on with
+        `addons: {<name>: {enabled: true, ...}}` in the config."""
+        options = self.addons.get(name) or {}
+        return options if options.get("enabled", False) else None
 
     @property
     def chroma_dir(self) -> Path:
@@ -46,4 +53,5 @@ def load_config(path: Path | None = None) -> Config:
         embedding_api_key=raw.get("embedding_api_key", defaults.embedding_api_key),
         chunk_size=int(raw.get("chunk_size", defaults.chunk_size)),
         chunk_overlap=int(raw.get("chunk_overlap", defaults.chunk_overlap)),
+        addons=raw.get("addons") or {},
     )
