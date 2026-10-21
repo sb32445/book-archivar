@@ -1,15 +1,18 @@
 # book-archivar
 
-Give an MCP-capable AI agent (Claude Desktop, Claude Code, your own agent) access to **your own EPUB library**, fully local:
+Give an MCP-capable AI agent (Claude Desktop, Claude Code, your own agent) access to **your own book library**, fully local. The agent can search it by meaning *and* by exact words, look at a book's chapters, and read any chapter verbatim.
 
-- `list_books` – what is in the archive
-- `search_books` – semantic search over all books (or one)
-- `list_chapters` – a book's table of contents
-- `get_chapter` – the exact text of one chapter, by title or index
+MCP tools:
 
-Unlike plain chunk-search tools, the agent can navigate by chapter and read a whole chapter verbatim.
+| Tool | What it does |
+|---|---|
+| `list_books` | what is in the archive |
+| `get_book_info` | title, author, language, chapter count, size |
+| `search_books` | `hybrid` (default), `semantic` or `keyword` search, optionally within one book; hits carry `chapter_index` |
+| `list_chapters` | a book's table of contents |
+| `get_chapter` | text of one chapter by title or index; long chapters come in windows (`offset`, `max_chars`) |
 
-This is the **basic** edition: pure Python, no Rust, no daemon. Anything beyond that (inbox watcher, fuzzy duplicate review, ...) is meant to live in add-ons.
+Core: pure Python, EPUB, plain text and Markdown. Everything else is an opt-in add-on (see below).
 
 ## Requirements
 
@@ -18,17 +21,17 @@ This is the **basic** edition: pure Python, no Rust, no daemon. Anything beyond 
 
 ## Install
 
-    git clone <this repo> && cd book-archivar
+    git clone https://github.com/sb32445/book-archivar && cd book-archivar
     python3 -m venv venv
-    ./venv/bin/pip install -e .
+    ./venv/bin/pip install -e .            # add ".[pdf]" for PDF support
 
 ## Use
 
-    # 1. import books (files or folders; originals are never touched or deleted)
-    ./venv/bin/book-archivar import ~/Books
+    ./venv/bin/book-archivar doctor                  # is the embedding endpoint reachable?
+    ./venv/bin/book-archivar import ~/Books          # files or folders; originals are never touched
+    ./venv/bin/book-archivar serve                   # MCP server on stdio
 
-    # 2. run the MCP server (stdio)
-    ./venv/bin/book-archivar serve
+Other commands: `list`, `remove <slug>`, `reindex`, `watch`, `review` (the last two are add-ons).
 
 Claude Desktop (`claude_desktop_config.json`) / Claude Code (`claude mcp add`):
 
@@ -38,49 +41,42 @@ Claude Desktop (`claude_desktop_config.json`) / Claude Code (`claude mcp add`):
       }
     }
 
-For a network service use `serve --transport streamable-http --host 127.0.0.1 --port 8000`.
-
-## Add-on: inbox watcher
-
-Drop EPUBs into a folder and they are imported automatically:
-
-    ./venv/bin/book-archivar watch ~/book-inbox            # watcher only
-    ./venv/bin/book-archivar serve --inbox ~/book-inbox    # MCP server + watcher
-
-Or switch it on in `config.yaml` (`addons.inbox.enabled: true`, `path`, `interval`), after which plain `book-archivar serve` also watches the folder. Add-ons are off by default; every add-on has its own section under `addons:` in `config.example.yaml`.
-
-Files are never deleted; they move to `processed/`, `duplicates/` (already in the library) or `failed/` (the file itself is broken). If the embedding endpoint is down, books simply wait in the inbox. `deploy/book-archivar.service` is a systemd user-service example.
-
-## Add-on: duplicate review
-
-The core only skips byte-identical files. With `addons.duplicates.enabled: true`, a book whose author and title match an existing one (ignoring case, name order and edition suffixes) but whose file differs is copied to `review/` instead of being imported. Then decide:
-
-    book-archivar review list
-    book-archivar review keep-both <entry>   # import it as an additional book
-    book-archivar review replace <entry>     # import it, then remove the old copy
-    book-archivar review discard <entry>
-
-`replace` imports first and removes the old book only afterwards, so a failed import never costs you the original. Stop `serve` while resolving (the index and Chroma are not meant for two writers). With the inbox add-on, such files land in the inbox's `review/` folder.
-
-## Add-on: JSON log file
-
-`addons.logging.enabled: true` writes a rotating JSON-lines log (`book-archivar.log`, default in `<data_dir>/logs`, 5 MB x 5) in addition to the normal stderr output: imports, review decisions, inbox activity and every MCP tool call. Only metadata is logged (tool, book, counts), never queries or book text.
+For a network service use `serve --transport streamable-http --host 127.0.0.1 --port 8000`. There is **no authentication**: keep it on loopback or put an authenticating proxy in front.
 
 ## Configuration
 
-Everything has a default; see `config.example.yaml`. Pass `--config FILE`, set `BOOK_ARCHIVAR_CONFIG`, or place a `config.yaml` in the working directory. Data lives in `~/.local/share/book-archivar` (`library/<slug>/{book.md,chapters.json,metadata.json}` plus `chroma/`).
+Everything has a default; see `config.example.yaml`. Pass `--config FILE`, set `BOOK_ARCHIVAR_CONFIG`, or place a `config.yaml` in the working directory. Data lives in `~/.local/share/book-archivar`: `library/<slug>/{book.md,chapters.json,metadata.json}`, `chroma/` (vectors), `keyword.db` (full-text index).
 
-**Changing the embedding model requires re-importing** (delete the data dir): vectors from different models are not comparable.
+## Changing the embedding model
+
+Vectors from different models are not comparable. The index remembers which model built it; importing with another model fails with a clear message. Run
+
+    ./venv/bin/book-archivar reindex
+
+to rebuild both indexes from `library/` (no original files needed). The old index is kept as `chroma.old-<timestamp>` until you delete it. Stop `serve` first. The same command repairs a damaged index, and applies new `chunk_size` settings.
 
 ## How it works
 
-EPUB → Markdown (EbookLib + a small HTML converter) → chapter byte ranges from the EPUB table of contents (anchors inside a file are honoured; without a TOC each document becomes a chapter) → fixed-size overlapping chunks per chapter → embeddings → Chroma. Importing the same file twice is detected by SHA-256.
+Book → Markdown plus chapter byte ranges → overlapping chunks that end at paragraph/sentence boundaries → embeddings → Chroma, and the same chunks into an SQLite FTS5 index. Hybrid search fuses both rankings (reciprocal rank fusion): meaning finds paraphrases, keywords find names and quotes. EPUB chapters come from the table of contents, including anchors inside a file; without one, each document becomes a chapter. The same file (SHA-256) is never imported twice.
+
+## Add-ons
+
+All off by default; enable each under `addons:` in `config.yaml`.
+
+**Inbox watcher** (`addons.inbox`) – drop books into a folder and they are imported: `book-archivar watch ~/inbox`, or with `serve` when enabled. Files are never deleted; they move to `processed/`, `duplicates/`, `review/` or `failed/`. If the embedding endpoint is down, books simply wait. `deploy/book-archivar.service` is a systemd example.
+
+**Duplicate review** (`addons.duplicates`) – a book whose author and title match an existing one but whose file differs is parked in `review/` instead of imported. Decide with `book-archivar review list|keep-both|replace|discard <entry>`. `replace` imports first and removes the old copy only afterwards. Stop `serve` while resolving.
+
+**JSON log file** (`addons.logging`) – rotating JSON-lines log of imports, review decisions and every tool call. Metadata only, never queries or book text.
+
+**PDF** (`addons.pdf`, `pip install "book-archivar[pdf]"`) – chapters from the PDF's bookmarks; without them "Chapter N" lines, else blocks of 20 pages. Uses poppler's `pdftotext` if installed (about 10x faster), otherwise pypdf. Scanned PDFs have no text; run OCR (`ocrmypdf`) first.
+
+**Calibre fallback** (`addons.calibre`) – MOBI, AZW3, FB2, DOCX, ODT, RTF via Calibre's `ebook-convert` (must be installed). The file is converted to a temporary EPUB and imported normally.
 
 ## Limitations
 
-- EPUB only (no PDF/MOBI).
-- The Markdown conversion is deliberately simple: tables, footnotes and images are reduced to text.
-- Chapter quality depends on the EPUB's TOC.
+- The conversion is deliberately simple: tables, footnotes and images are reduced to text. PDF layouts with columns can read oddly.
+- Chapter quality depends on the book's table of contents.
 - Only use it with books you are allowed to use; do not publish the generated library.
 
 ## Tests

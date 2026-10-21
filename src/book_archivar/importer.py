@@ -10,8 +10,9 @@ from book_archivar.addons.duplicates import file_for_review, find_fuzzy_duplicat
 from book_archivar.chapters import write_chapters
 from book_archivar.chunking import chunk_book
 from book_archivar.config import Config
-from book_archivar.epub_convert import convert_epub
+from book_archivar.converters import convert
 from book_archivar.hashing import canonical_author, sha256_file, slugify
+from book_archivar.stamp import verify_or_stamp
 from book_archivar.library import BookEntry, add_entry, read_index
 from book_archivar.vectorstore import VectorStore
 
@@ -26,6 +27,14 @@ class ImportOutcome:
     slug: str
 
 
+def embed_chunks(embeddings_client, chunks) -> list[list[float]]:
+    embeddings: list[list[float]] = []
+    for start in range(0, len(chunks), EMBED_BATCH_SIZE):
+        batch = chunks[start : start + EMBED_BATCH_SIZE]
+        embeddings.extend(embeddings_client.embed([c.text for c in batch]))
+    return embeddings
+
+
 def _unique_slug(base: str, content_hash: str, taken: set[str]) -> str:
     """Plain author-title slug; if taken by a different file, add the hash."""
     if base not in taken:
@@ -38,7 +47,7 @@ def _unique_slug(base: str, content_hash: str, taken: set[str]) -> str:
     return candidate
 
 
-def import_epub(
+def import_book(
     epub_path: Path,
     config: Config,
     embeddings_client,
@@ -46,7 +55,7 @@ def import_epub(
     review_dir: Path | None = None,
     force: bool = False,
 ) -> ImportOutcome:
-    """Import one EPUB into <data_dir>/library/<slug>/ and index it in Chroma.
+    """Import one book (EPUB, or any format the config enables) into <data_dir>/library/<slug>/ and index it in Chroma.
 
     The same file (by SHA-256) is never imported twice. Embedding happens before
     anything is written, so an unreachable embedding endpoint leaves no
@@ -64,7 +73,7 @@ def import_epub(
             if entry.content_hash == content_hash:
                 return ImportOutcome("duplicate", entry.slug)
 
-    book = convert_epub(epub_path)
+    book = convert(epub_path, config)
     author = canonical_author(book.author)
     if review_dir is not None and not force:
         matched = find_fuzzy_duplicate(author, book.title, entries)
@@ -76,10 +85,8 @@ def import_epub(
 
     body = book.markdown.encode("utf-8")
     chunks = chunk_book(body, book.chapters, config.chunk_size, config.chunk_overlap)
-    embeddings: list[list[float]] = []
-    for start in range(0, len(chunks), EMBED_BATCH_SIZE):
-        batch = chunks[start : start + EMBED_BATCH_SIZE]
-        embeddings.extend(embeddings_client.embed([c.text for c in batch]))
+    embeddings = embed_chunks(embeddings_client, chunks)
+    verify_or_stamp(config, len(embeddings[0]) if embeddings else None)
 
     book_dir = config.library_dir / slug
     book_dir.mkdir(parents=True, exist_ok=True)
@@ -110,3 +117,6 @@ def import_epub(
     logger.info("imported %s as %s (%d chapters, %d chunks)",
                 epub_path.name, slug, len(book.chapters), len(chunks))
     return ImportOutcome("imported", slug)
+
+
+import_epub = import_book  # historical name

@@ -26,3 +26,9 @@ addons:
     enabled: false
     # dir: ~/.local/share/book-archivar/logs
     level: INFO
+  pdf:                       # import text PDFs: pip install "book-archivar[pdf]"
+    enabled: false
+  calibre:                   # MOBI/AZW3/DOCX/... through Calibre's ebook-convert
+    enabled: false
+    # binary: ebook-convert
+    # suffixes: [.mobi, .azw3, .fb2, .docx, .odt, .rtf]

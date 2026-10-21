@@ -30,6 +30,10 @@ class Config:
         return options if options.get("enabled", False) else None
 
     @property
+    def keyword_db(self) -> Path:
+        return self.data_dir / "keyword.db"
+
+    @property
     def chroma_dir(self) -> Path:
         return self.data_dir / "chroma"
 

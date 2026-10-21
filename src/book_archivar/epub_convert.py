@@ -6,34 +6,23 @@ spine document becomes a chapter named after its first heading.
 """
 from __future__ import annotations
 
-import dataclasses
 import posixpath
 import re
 from html.parser import HTMLParser
 from pathlib import Path
 from urllib.parse import unquote
 
+import warnings
+
 from ebooklib import ITEM_DOCUMENT, epub
 
-from book_archivar.chapters import Chapter
+from book_archivar.chapters import chapters_from_boundaries
+from book_archivar.converters import ConversionError, ConvertedBook
 
 _SKIP = {"script", "style", "head", "title"}
 _BLOCK = {"p", "div", "li", "blockquote", "tr", "section", "article", "pre", "ul", "ol", "table"}
 _HEADING = {"h1": 1, "h2": 2, "h3": 3, "h4": 4, "h5": 5, "h6": 6}
 _WS = re.compile(r"\s+")
-
-
-class ConversionError(RuntimeError):
-    pass
-
-
-@dataclasses.dataclass(frozen=True)
-class ConvertedBook:
-    title: str
-    author: str
-    language: str
-    markdown: str
-    chapters: list[Chapter]
 
 
 class _HtmlToMarkdown(HTMLParser):
@@ -140,7 +129,9 @@ def _first(book: epub.EpubBook, key: str, default: str) -> str:
 
 def convert_epub(path: Path) -> ConvertedBook:
     try:
-        book = epub.read_epub(str(path))
+        with warnings.catch_warnings():  # EbookLib is noisy about its own deprecations
+            warnings.simplefilter("ignore")
+            book = epub.read_epub(str(path))
     except Exception as exc:  # EbookLib raises a zoo of exception types
         raise ConversionError(f"cannot read {path.name}: {exc}") from exc
 
@@ -186,7 +177,7 @@ def convert_epub(path: Path) -> ConvertedBook:
         author=_first(book, "creator", "Unknown"),
         language=_first(book, "language", "und"),
         markdown=body,
-        chapters=_chapters_from_boundaries(body, boundaries),
+        chapters=chapters_from_boundaries(body, boundaries),
     )
 
 
@@ -205,26 +196,3 @@ def _toc_boundaries(book, file_start, anchors) -> list[tuple[int, str]]:
         if not deduped or deduped[-1][0] != pos:
             deduped.append((pos, title))
     return deduped
-
-
-def _chapters_from_boundaries(body: str, boundaries: list[tuple[int, str]]) -> list[Chapter]:
-    boundaries = list(boundaries)
-    # Text before the first TOC entry (title page, copyright, ...) stays reachable.
-    if boundaries and boundaries[0][0] > 0 and body[: boundaries[0][0]].strip():
-        boundaries.insert(0, (0, "Front matter"))
-    if not boundaries:
-        boundaries = [(0, "Full text")]
-
-    # Convert character offsets to byte offsets in one incremental pass.
-    byte_at: dict[int, int] = {}
-    prev_char, prev_byte = 0, 0
-    for pos in [p for p, _ in boundaries] + [len(body)]:
-        prev_byte += len(body[prev_char:pos].encode("utf-8"))
-        prev_char = pos
-        byte_at[pos] = prev_byte
-
-    ends = [p for p, _ in boundaries[1:]] + [len(body)]
-    return [
-        Chapter(title=title, start_byte=byte_at[pos], end_byte=byte_at[end])
-        for (pos, title), end in zip(boundaries, ends)
-    ]

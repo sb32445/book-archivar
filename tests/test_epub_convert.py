@@ -1,6 +1,7 @@
 import pytest
 
-from book_archivar.epub_convert import ConversionError, convert_epub
+from book_archivar.converters import ConversionError
+from book_archivar.epub_convert import convert_epub
 from tests.helpers import make_epub
 
 

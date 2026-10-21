@@ -13,7 +13,7 @@ import logging
 import shutil
 import threading
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Iterable
 
 from book_archivar.importer import ImportOutcome
 
@@ -29,16 +29,18 @@ class InboxWatcher:
         inbox_dir: Path,
         import_fn: Callable[[Path], ImportOutcome],
         max_attempts: int = MAX_ATTEMPTS,
+        suffixes: Iterable[str] = (".epub",),
     ):
         self._inbox = Path(inbox_dir)
         self._inbox.mkdir(parents=True, exist_ok=True)
         self._import_fn = import_fn
         self._max_attempts = max_attempts
+        self._suffixes = {x.lower() for x in suffixes}
         self._last_size: dict[str, int] = {}
         self._attempts: dict[str, int] = {}
 
     def poll_once(self) -> None:
-        epubs = [f for f in self._inbox.iterdir() if f.is_file() and f.suffix.lower() == ".epub"]
+        epubs = [f for f in self._inbox.iterdir() if f.is_file() and f.suffix.lower() in self._suffixes]
         present = {f.name for f in epubs}
         for state in (self._last_size, self._attempts):
             for name in set(state) - present:
