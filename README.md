@@ -43,6 +43,10 @@ Claude Desktop (`claude_desktop_config.json`) / Claude Code (`claude mcp add`):
 
 For a network service use `serve --transport streamable-http --host 127.0.0.1 --port 8000`. There is **no authentication**: keep it on loopback or put an authenticating proxy in front.
 
+## Using it with an agent
+
+`example/SKILL.md` is a template skill that tells an agent when and how to use the five tools (searching, quoting, reading long chapters). Copy it into your agent's skills folder and adapt it.
+
 ## Configuration
 
 Everything has a default; see `config.example.yaml`. Pass `--config FILE`, set `BOOK_ARCHIVAR_CONFIG`, or place a `config.yaml` in the working directory. Data lives in `~/.local/share/book-archivar`: `library/<slug>/{book.md,chapters.json,metadata.json}`, `chroma/` (vectors), `keyword.db` (full-text index).
